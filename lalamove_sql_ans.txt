@@ -1,0 +1,54 @@
+-- a) For hours with orders, how many orders are there each hour based on order time?
+SELECT CONCAT(DATE_FORMAT(order_datetime,'%Y-%m-%d %H:00:00')," - ", CONCAT(TIME(SUBTIME(DATE_ADD(DATE_FORMAT(order_datetime,'%Y-%m-%d %H:00:00'), INTERVAL 1 HOUR),'00:00:01')))) AS Time_interval, 
+	COUNT(idvanOrder) AS number_per_interval
+FROM vanorder
+GROUP BY Time_interval
+ORDER BY Time_interval;
+
+-- b) What is the percentage of money spent for each of the following group of clients?
+-- 	- Clients who completed 1 order
+-- 	- Clients who completed more than 1 order
+SELECT 
+Count_group, 
+SUM(SUM_TOTAL)/(SELECT SUM(total_price) FROM vanorder WHERE order_status = 2) * 100 AS Percentage
+	FROM
+		(SELECT 
+			(CASE WHEN COUNT(requestor_client_id) = 1 THEN '1' ELSE '>1' END) AS Count_group,
+			SUM(total_price) AS SUM_TOTAL
+		FROM vanorder
+		WHERE order_status = 2
+		GROUP BY requestor_client_id) AS sub_tab
+	GROUP BY Count_group;
+    
+-- c) List of unique Client ID who completed at least one order, also show each client's total money spent, and the total order(s) completed. Order the list by total money spent (descending), then by total order(s) completed (descending)
+SELECT requestor_client_id AS client_id, SUM(total_price) AS Total_money_spent, 
+	COUNT(order_status = 2) AS Total_order_complete
+FROM vanorder
+WHERE order_status = 2 
+GROUP BY client_id
+ORDER BY Total_money_spent DESC, Total_order_complete DESC;
+
+-- d) List of all drivers who took order(s) (regardless of whether they eventually complete the order), also show each driver's total income and total order(s) completed. Order the list by total income (descending), then by total order(s) completed
+SELECT vi.servicer_auth as Driver_id,
+IFNULL(SUM(vo.total_price), 0) as Total_income,
+(IF(IFNULL(SUM(vo.total_price), 0)=0, 0, COUNT(vo.servicer_auth))) as Total_orders_completed 
+FROM vaninterest vi
+LEFT JOIN vanorder vo 
+ON vi.idvanOrder = vo.idvanOrder
+	AND vi.servicer_auth = vo.servicer_auth
+	AND vi.order_subset_assigned = vo.order_subset
+	AND vo.order_status = 2
+GROUP BY Driver_id
+ORDER BY Total_income DESC, Total_orders_completed DESC, Driver_id ASC;
+
+-- e) List of driver ID who took orders, but never complete an order?
+SELECT vi.servicer_auth as Driver_id
+FROM vaninterest vi
+LEFT JOIN vanorder vo 
+ON vi.idvanOrder = vo.idvanOrder
+	AND vi.servicer_auth = vo.servicer_auth
+	AND vi.order_subset_assigned = vo.order_subset
+	AND vo.order_status = 2
+GROUP BY Driver_id
+HAVING (IF(IFNULL(SUM(vo.total_price), 0)=0, 0, COUNT(vo.servicer_auth)))  = 0
+ORDER BY Driver_id ASC;
